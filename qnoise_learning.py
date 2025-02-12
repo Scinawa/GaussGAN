@@ -13,7 +13,7 @@ set_seed(42)
 n_samples = 10000
 batch_size = 256
 val_test_split = (0., 0.)
-num_qubits = 1
+num_qubits = 4
 num_layers = 1
 
 # DataModule (no need to call setup)
