@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-from lightning import LightningModule
+from pytorch_lightning import LightningModule
 from rdkit import Chem
 from torch import nn
 import pdb
@@ -14,6 +14,7 @@ import warnings
 
 
 from .metrics import ALL_METRICS
+from .nn import SimpleMLP
 
 
 class GaussGan(LightningModule):
@@ -253,3 +254,37 @@ class GaussGan(LightningModule):
             else:
                 metrics[metric] = ALL_METRICS[metric]().compute_score(batch)
         return metrics
+
+class LightningSimpleMLP(LightningModule):
+    def __init__(self, input_dim, n_layers, hidden_dim, output_dim, dropout, lr):
+        super().__init__()
+        self.model = SimpleMLP(input_dim, n_layers, hidden_dim, output_dim, dropout)
+        self.lr = lr
+        self.save_hyperparameters()
+
+    def configure_optimizers(self):
+        return self.optimizer(self.model.parameters()), []
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.model(x)
+        loss = F.mse_loss(y_hat, y)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.model(x)
+        loss = F.mse_loss(y_hat, y)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self.model(x)
+        loss = F.mse_loss(y_hat, y)
+        self.log("test_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+    
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.lr)

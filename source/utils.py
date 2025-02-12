@@ -1,7 +1,11 @@
+import random
+import numpy as np
 import argparse
 from torch.utils.data import TensorDataset
 from source.data import GaussianDataModule
 import pickle
+import torch
+import pytorch_lightning as pl
 
 
 def load_data(args):
@@ -143,3 +147,18 @@ def parse_args():
         help="Number of validation samples step",
     )
     return parser.parse_args()
+
+def set_seed(seed: int):
+    """
+    Set the seed for reproducibility in PyTorch, NumPy, and Python random.
+    """
+    random.seed(seed)
+    
+    np.random.seed(seed)
+    
+    torch.manual_seed(seed)
+    
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    pl.seed_everything(seed)

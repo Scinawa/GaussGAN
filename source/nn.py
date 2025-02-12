@@ -44,7 +44,25 @@ class QuantumNoise(nn.Module):
                     qml.CNOT(wires=[i, i + 1])
             return [qml.expval(qml.PauliZ(i)) for i in range(num_qubits)]
 
+        # Define the quantum circuit
+        @qml.qnode(dev, interface="torch", diff_method="backprop")
+        def gen_circuit_with_input(z1, z2):
+            w = self.weights
+            # construct generator circuit for both atom vector and node matrix
+            for i in range(num_qubits):
+                qml.RY(np.arcsin(z1), wires=i)
+                qml.RZ(np.arcsin(z2), wires=i)
+            for l in range(num_layers):
+                for i in range(num_qubits):
+                    qml.RY(w[l][i], wires=i)
+                for i in range(num_qubits - 1):
+                    qml.CNOT(wires=[i, i + 1])
+                    qml.RZ(w[l][i + num_qubits], wires=i + 1)
+                    qml.CNOT(wires=[i, i + 1])
+            return [qml.expval(qml.PauliZ(i)) for i in range(num_qubits)]
+        
         self.gen_circuit = gen_circuit
+        self.gen_circuit_with_input = gen_circuit_with_input
 
     def forward(self, batch_size: int):
         sample_list = [
@@ -55,7 +73,6 @@ class QuantumNoise(nn.Module):
         ]
         noise = torch.stack(tuple(sample_list)).float()
         return noise
-
 
 class QuantumShadowNoise(nn.Module):
     @staticmethod
@@ -184,6 +201,27 @@ class MLPDiscriminator(nn.Module):
             nn.Linear(64, output_dim),          # Output: Probability
             nn.Sigmoid()
         )
+    
+    def forward(self, x):
+        return self.model(x)
+    
+class SimpleMLP(nn.Module):
+    def __init__(self, input_dim, n_layers, hidden_dim, output_dim, dropout=0):
+        super(SimpleMLP, self).__init__()
+        if n_layers < 1:
+            raise ValueError("Number of layers must be at least 1.")
+        elif n_layers == 1:
+            self.model = nn.Linear(input_dim, output_dim)
+        else:
+            layers = []
+            layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            for _ in range(n_layers-1):
+                layers.append(nn.Linear(hidden_dim, hidden_dim))
+                layers.append(nn.ReLU())
+                layers.append(nn.Dropout(dropout))
+            layers.append(nn.Linear(hidden_dim, output_dim))
+            self.model = nn.Sequential(*layers)
     
     def forward(self, x):
         return self.model(x)

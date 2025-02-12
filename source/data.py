@@ -11,6 +11,7 @@ from torchdrug.data import Molecule
 from tqdm import tqdm
 
 from .metrics import ALL_METRICS
+from .nn import QuantumNoise
 
 # from lightning.pytorch.trainer.connectors.data_connector import DataConnector
 
@@ -57,9 +58,6 @@ from .metrics import ALL_METRICS
 #             dataset = pickle.load(f)
 #         print(f"Dataset loaded from {filename}.")
 #         return dataset
-
-   
-
 
 
 class GaussianDataModule(LightningDataModule):
@@ -124,3 +122,51 @@ class GaussianDataModule(LightningDataModule):
             num_workers=0,
             #collate_fn=collate_fn,
         )
+
+class QNoiseData(LightningDataModule):
+    def __init__(self, 
+                 n_samples, 
+                 batch_size=32, 
+                 val_test_split=(0.2,0.2), 
+                 num_qubits=1, 
+                 num_layers=1):
+        super().__init__()
+        self.save_hyperparameters()
+        self.n_samples = n_samples
+        self.generator = QuantumNoise(num_qubits, num_layers)
+        self.batch_size = batch_size
+        self.val_test_split = val_test_split
+        self.x, self.y = self.generate_data()
+        
+    def generate_data(self):
+        x = []
+        y = []
+        for _ in range(self.n_samples):
+            z1 = np.random.uniform(-1, 1)
+            z2 = np.random.uniform(-1, 1)
+            output = self.generator.gen_circuit_with_input(z1, z2)
+            x.append(torch.tensor([z1, z2], dtype=torch.float32))
+            y.append(output)
+        y = torch.tensor(y, dtype=torch.float32).detach()
+        return x, y
+
+    def setup(self, stage=None):
+        train_size = int((1 - sum(self.val_test_split)) * self.n_samples)
+        val_size = int(self.val_test_split[0] * self.n_samples)
+        test_size = self.n_samples - train_size - val_size
+        
+        self.train_data = self.x[:train_size], self.y[:train_size]
+        self.val_data = self.x[train_size:train_size + val_size], self.y[train_size:train_size + val_size]
+        self.test_data = self.x[-test_size:], self.y[-test_size:]
+    
+    def train_dataloader(self):
+        x, y = self.train_data
+        return DataLoader(list(zip(x, y)), batch_size=self.batch_size, shuffle=True)
+    
+    def val_dataloader(self):
+        x, y = self.val_data
+        return DataLoader(list(zip(x, y)), batch_size=self.batch_size)
+    
+    def test_dataloader(self):
+        x, y = self.test_data
+        return DataLoader(list(zip(x, y)), batch_size=self.batch_size)
